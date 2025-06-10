@@ -1,0 +1,13 @@
+[project]
+name = "rags"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "langchain>=0.3.25",
+    "langchain-chroma>=0.2.4",
+    "langchain-ollama>=0.3.3",
+    "pandas>=2.2.3",
+    "psycopg2-binary>=2.9.10",
+    "sqlalchemy>=2.0.41",
+]
