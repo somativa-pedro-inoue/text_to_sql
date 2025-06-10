@@ -1,4 +1,4 @@
-from business_context import get_business_context
+from rag_v3.Documents.business.business_context import get_business_context
 
 def build_business_doc(table_name):
 

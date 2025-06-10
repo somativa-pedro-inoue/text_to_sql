@@ -1,8 +1,9 @@
+from dotenv import load_dotenv
 from langchain_ollama.llms import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
-from vector import vector_store, get_retriever  # importa funções do vector.py
+from vector import vector_store, get_retriever
 from langchain_core.documents import Document
-
+import os
 
 def extract_sql(text):
     start_index = text.upper().find('SELECT')
@@ -19,17 +20,13 @@ def smart_retrieval(question):
     2. Depois busca o schema técnico apenas das tabelas identificadas
     """
 
-    # Etapa 1: Busca contexto de negócio para identificar tabelas
     business_retriever = get_retriever("business", k=2)
     business_docs = business_retriever.invoke(question)
 
     if business_docs:
-        # Pega os nomes das tabelas identificadas
         relevant_tables = [doc.metadata["table"] for doc in business_docs]
         print(f"📋 Tabelas identificadas: {relevant_tables}")
 
-        # Etapa 2: Busca schema apenas das tabelas relevantes
-        # Chroma precisa de operadores AND explícitos
         schema_docs = vector_store.similarity_search(
             question,
             k=len(relevant_tables),
@@ -41,16 +38,22 @@ def smart_retrieval(question):
             }
         )
 
-        # Combina contexto + schema
-        return business_docs + schema_docs
+        relations = vector_store.as_retriever(
+            search_kwargs={
+                "score_threshold": 0.5,
+                "filter": {"doc_type": {"$in": ["join"]},
+                           "table": {"$in": relevant_tables}}
+            }
+        )
+
+        return business_docs + schema_docs + relations
     else:
-        # Fallback: busca mista se não encontrou contexto
         mixed_retriever = get_retriever("mixed", k=4)
         return mixed_retriever.invoke(question)
 
-
+load_dotenv()
 # Modelo
-model = OllamaLLM(model="codellama:7b")
+model = OllamaLLM(os.getenv("OLLAMA_MODEL"))
 
 # Prompt otimizado para incluir JOINs
 template = """
@@ -64,10 +67,6 @@ REGRAS IMPORTANTES:
 - Se a pergunta envolver informações de múltiplas tabelas, use JOINs apropriados
 - Para conectar clientes com contas a pagar, use: codigo_cliente_omie = codigo_cliente_fornecedor
 - Sempre use o schema "visao360" antes do nome da tabela (ex: visao360.stg_omie_listarclientes)
-
-INFORMAÇÕES DE JOIN:
-- stg_omie_listarclientes.codigo_cliente_omie = stg_omie_listarcontaspagar.codigo_cliente_fornecedor
-- Use esta ligação para relacionar dados de clientes com suas contas a pagar
 
 Contexto do banco de dados:
 {context}
@@ -87,10 +86,8 @@ while True:
 
     print("\n🔍 Buscando informações relevantes...")
 
-    # Usa busca inteligente
     docs = smart_retrieval(question)
 
-    # Separa contexto de negócio e schema para exibição
     business_context = [doc for doc in docs if doc.metadata.get("doc_type") == "business_context"]
     schema_context = [doc for doc in docs if doc.metadata.get("doc_type") == "schema"]
 
@@ -102,15 +99,12 @@ while True:
     for doc in schema_context:
         print(f"  - {doc.metadata['table']}")
 
-    # Monta contexto final priorizando schema (mais importante para SQL)
     context_parts = []
 
-    # Primeiro o schema (mais importante para gerar SQL)
     for doc in schema_context:
         context_parts.append(f"=== SCHEMA DA TABELA {doc.metadata['table'].upper()} ===")
         context_parts.append(doc.page_content)
 
-    # Depois contexto de negócio (para entendimento)
     for doc in business_context:
         context_parts.append(f"=== CONTEXTO: {doc.metadata['table'].upper()} ===")
         context_parts.append(doc.page_content)

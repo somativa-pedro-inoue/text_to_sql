@@ -52,3 +52,5 @@ COMMENT: {table_comment}
 COLUMNS:
 {chr(10).join([f"- {desc}" for desc in col_descriptions])}
             """.strip()
+
+    return table
