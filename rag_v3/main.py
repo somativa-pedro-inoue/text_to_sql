@@ -14,12 +14,6 @@ def extract_sql(text):
 
 
 def smart_retrieval(question):
-    """
-    Busca inteligente em duas etapas:
-    1. Primeiro identifica as tabelas relevantes pelo contexto de negócio
-    2. Depois busca o schema técnico apenas das tabelas identificadas
-    """
-
     business_retriever = get_retriever("business", k=2)
     business_docs = business_retriever.invoke(question)
 
@@ -38,24 +32,24 @@ def smart_retrieval(question):
             }
         )
 
-        relations = vector_store.as_retriever(
-            search_kwargs={
-                "score_threshold": 0.5,
-                "filter": {"doc_type": {"$in": ["join"]},
-                           "table": {"$in": relevant_tables}}
+        relations_docs = vector_store.similarity_search(
+            question,
+            k=2,
+            filter={
+                "$and": [
+                    {"doc_type": {"$eq": "join"}},
+                    {"table": {"$in": relevant_tables}}
+                ]
             }
         )
-
-        return business_docs + schema_docs + relations
+        return business_docs + schema_docs + relations_docs
     else:
         mixed_retriever = get_retriever("mixed", k=4)
         return mixed_retriever.invoke(question)
 
 load_dotenv()
-# Modelo
-model = OllamaLLM(os.getenv("OLLAMA_MODEL"))
+model = OllamaLLM(model=os.getenv("OLLAMA_MODEL"))
 
-# Prompt otimizado para incluir JOINs
 template = """
 Você é um especialista em PostgreSQL. Gere APENAS a consulta SQL usando o contexto fornecido.
 
@@ -78,7 +72,6 @@ SQL Query:"""
 prompt = ChatPromptTemplate.from_template(template)
 chain = prompt | model
 
-# Loop principal
 while True:
     question = input("\n🤖 Faça sua pergunta (ou 'q' para sair): ")
     if question.lower() == 'q':
@@ -90,6 +83,7 @@ while True:
 
     business_context = [doc for doc in docs if doc.metadata.get("doc_type") == "business_context"]
     schema_context = [doc for doc in docs if doc.metadata.get("doc_type") == "schema"]
+    join_context = [doc for doc in docs if doc.metadata.get("doc_type") == "join"]
 
     print(f"\n📊 Contexto de Negócio ({len(business_context)} docs):")
     for doc in business_context:
@@ -107,6 +101,10 @@ while True:
 
     for doc in business_context:
         context_parts.append(f"=== CONTEXTO: {doc.metadata['table'].upper()} ===")
+        context_parts.append(doc.page_content)
+
+    for doc in join_context:
+        context_parts.append(f"=== JOIN: {doc.metadata['table'].upper()} ===")
         context_parts.append(doc.page_content)
 
     context = "\n\n".join(context_parts)

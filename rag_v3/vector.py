@@ -61,7 +61,6 @@ add_documents = not os.path.exists(db_location)
 if add_documents:
     documents = []
 
-    # 1. DOCUMENTOS DE CONTEXTO E SCHEMA (como antes)
     for table_name in tabelas_para_testar:
         columns = inspector.get_columns(table_name, schema=schema)
         table_comment = inspector.get_table_comment(table_name, schema=schema)
@@ -100,42 +99,6 @@ if add_documents:
                 }
             ))
 
-    # 2. DOCUMENTO ESPECÍFICO DE RELACIONAMENTOS
-#     relationships_doc = """
-# RELACIONAMENTOS ENTRE TABELAS E JOINS POSSÍVEIS
-#
-# CLIENTES ↔ CONTAS A PAGAR:
-# - Como conectar: stg_omie_listarclientes.codigo_cliente_omie = stg_omie_listarcontaspagar.codigo_cliente_fornecedor
-# - Relacionamento: 1 cliente pode ter N contas a pagar
-# - Usado para: Ver débitos, contas pendentes, histórico financeiro por cliente
-#
-# CONSULTAS TÍPICAS COM JOIN:
-# - Clientes com contas em atraso ou não pagas
-# - Total de valores devidos por cliente
-# - Ranking de clientes devedores
-# - Histórico de pagamentos por cliente
-# - Contatos de clientes com débitos pendentes
-#
-# COLUNAS DE LIGAÇÃO:
-# - codigo_cliente_omie (na tabela de clientes) conecta com codigo_cliente_fornecedor (na tabela de contas a pagar)
-# - Esta ligação permite cruzar informações de cadastro com informações financeiras
-#
-# EXEMPLOS DE PERGUNTAS QUE PRECISAM DE JOIN:
-# - "Quais clientes têm contas em atraso?"
-# - "Qual o total devido por cada cliente?"
-# - "Clientes que mais devem"
-# - "Contato dos clientes inadimplentes"
-#     """
-#
-#     documents.append(Document(
-#         page_content=relationships_doc,
-#         metadata={
-#             "doc_type": "relationships",
-#             "purpose": "table_joins",
-#             "tables_involved": "stg_omie_listarclientes,stg_omie_listarcontaspagar"
-#         }
-#     ))
-
     # 3. DOCUMENTOS DE EXEMPLOS DE QUERIES
     for example_name, example_info in QUERY_EXAMPLES.items():
         example_doc = f"""
@@ -170,14 +133,12 @@ vector_store = Chroma(
 if add_documents:
     vector_store.add_documents(documents=documents)
 
-
-# Retriever customizado
 def get_retriever(search_type="mixed", k=4):
     if search_type == "business":
         return vector_store.as_retriever(
             search_type="similarity_score_threshold",
             search_kwargs={
-                "score_threshold": 0.5,
+                "score_threshold": 0.4,
                 "filter": {"doc_type": {"$eq": "business_context"}}
             }
         )
